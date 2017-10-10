@@ -1,0 +1,279 @@
+---
+title: "Evaluating Machine Learning Methods using Iris Dataset"
+output: html_notebook
+---
+
+In this notebook, we will explore how to perform machine learning on a dataset using the following methods:
+1. Decision Tree Classifier
+2. Logistic Regression
+3. K Nearest Neighbor
+4. Random Forest
+5. Support Vector Machine
+
+We will first do some data exploration and exploratory analysis, and then we will make model fits and make the predictions.
+
+# Preliminary set-up
+
+Let us first include the libraries for this data analysis.
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(ggpubr)
+library(corrplot)
+library(grid)
+library(gridExtra)
+library(rpart)
+library(caret)
+```
+
+Now, we will read the data from the .csv file using read_csv method
+
+```{r}
+iris <- read_csv("iris.csv")
+head(iris)
+```
+
+From the first few rows, we will notice that there are 4 columns avaliable for classification. Let us dive into these columns and decipher how they correlate to species classification.
+
+# Exploratory Analysis
+
+## Univariate Analysis:
+
+We will go through each column and see how they affect classification. We will use ggplot2 to visualize the data. Any additional notes will be recorded.
+
+### Sepal Length
+
+```{r}
+sepalLength <- iris %>% select(SepalLengthCm, Species)
+ggplot(sepalLength) + geom_point(aes(SepalLengthCm, color = Species), stat = "count") +
+  ggtitle("Sepal Length")
+```
+
+Ordering the flowers based on sepal length looks like: setosa < versicolor < virginica
+
+### Sepal Width
+
+```{r}
+sepalWidth <- iris %>% select(SepalWidthCm, Species)
+ggplot(sepalWidth) + geom_point(aes(SepalWidthCm, color = Species), stat = "count") +
+  ggtitle("Sepal Width")
+```
+
+Compared to sepal length, the clusters of the flowers are not as easily visible. Virginica flowers are more distributed. However, ordering teh flowers results in: versicolor < virginica < setosa.
+
+### Petal Length
+
+```{r}
+petalLength <- iris %>% select(PetalLengthCm, Species)
+ggplot(petalLength) + geom_point(aes(PetalLengthCm, color = Species), stat = "count") +
+  ggtitle("Petal Length")
+```
+
+The clusters of flowers are really apparent in this column. We can deduce the following order: setosa < versicolor < virginica
+
+### Petal Width 
+
+```{r}
+petalWidth <- iris %>% select(PetalWidthCm, Species)
+ggplot(petalWidth) + geom_point(aes(PetalWidthCm, color = Species), stat = "count") +
+  ggtitle("Petal Width")
+```
+
+Like petal length, the clusters are quite clear. The ordering is: setosa < versicolor < virginica. This is very interesting! This is the exact same ordering as petal length. We could use this in our models.
+
+With that, our univariate analysis analysis is concluded.
+
+### Violin Plots
+
+I always wanted to experiment with violin plots. Violin plots can be used for univariate analysis to quickly show how species are diffrentiated by different variables. In this plot, the width of the the 'violin' is the amount of flowers that express the variable value. I have also included a mini boxplot within each violin to show where the mean is as well as the variation. 
+
+```{r}
+data_summary <- function(x)
+{
+  m <- mean(x)
+  ymin <- m - sd(x)
+  ymax <- m + sd(x)
+  return (c(y = m, ymin = ymin, ymax = ymax))
+}
+
+violinPlot1 <- ggplot(iris, aes(Species, SepalLengthCm, fill = Species)) + geom_violin(trim = FALSE) +
+  stat_summary(fun.data = data_summary)
+violinPlot2 <- ggplot(iris, aes(Species, SepalWidthCm, fill = Species)) + geom_violin(trim = FALSE) +
+  stat_summary(fun.data = data_summary)
+violinPlot3 <- ggplot(iris, aes(Species, PetalLengthCm, fill = Species)) + geom_violin(trim = FALSE) +
+  stat_summary(fun.data = data_summary)
+violinPlot4 <- ggplot(iris, aes(Species, PetalWidthCm, fill = Species)) + geom_violin(trim = FALSE) +
+  stat_summary(fun.data = data_summary)
+grid.arrange(violinPlot1, violinPlot2, violinPlot3, violinPlot4, ncol = 2)
+```
+
+## Multivariate Analysis
+
+There are many combinations of variables that we can analyze. As I am only practicing with machine learning and data analysis, I won't do all combinations, however, I will use a correlation plot to see all the combinations.
+
+### Petal Length vs Sepal Length
+
+```{r}
+sepalPetalLength <- iris %>% select(SepalLengthCm, PetalLengthCm, Species)
+ggplot(sepalPetalLength) + geom_point(aes(SepalLengthCm, PetalLengthCm, color = Species)) +
+  ggtitle("Petal Length vs Sepal Length")
+```
+
+Wow. The plot shows extremely nice clustering! This probably indicates that these two variables will help diffrentiate the species a lot when we implement the machine learning techniques.
+
+### Petal Width vs Sepal Width
+
+```{r}
+sepalPetalWidth <- iris %>% select(SepalWidthCm, PetalWidthCm, Species)
+ggplot(sepalPetalWidth) + geom_point(aes(SepalWidthCm, PetalWidthCm, color = Species)) + 
+  ggtitle("Petal Width vs Sepal Width")
+```
+
+Compared to the last plot, the clustering as nice, as there are some outliers (notice the lone setosa flower) and there is some overlap with the versicolor and virginica species
+
+### Marginal density plots
+
+In this analysis, I wanted to experiment with marginal density plots. These plots give us a lot of information. The scatterplot in the middle is the same as you have seen on the other plots. However, there are density plots on the side that show the distribution of the species according to the corresponding variable.
+
+```{r}
+sp <- ggscatter(iris, x = "SepalLengthCm", y = "SepalWidthCm",
+                color = "Species", palette = "jco",
+                size = 3, alpha = 0.6)+
+  border()                                         
+xplot <- ggdensity(iris, "SepalLengthCm", fill = "Species",
+                   palette = "jco")
+yplot <- ggdensity(iris, "SepalWidthCm", fill = "Species", 
+                   palette = "jco")+
+  rotate()
+yplot <- yplot + clean_theme() 
+xplot <- xplot + clean_theme()
+ggarrange(xplot, NULL, sp, yplot, 
+          ncol = 2, nrow = 2,  align = "hv", 
+          widths = c(2, 1), heights = c(1, 2),
+          common.legend = TRUE)
+```
+
+Wow! My first marginal density plot! As you can see, it is a bit easier to see the clusters. It also combined some of the univariate analysis. It seems that good clustering was achieved in this bivariate analysis.
+
+### Correlation Plots
+
+Ah, the staple data analysis plot. This is a very ubiquitous plot on several Kaggle kernels. After I used it, I finally realized why so many data scientists use this tool. This plot allows you to find the r-squared value between two variables for all combinations of variables. This could be used a lot for feature selection!
+
+```{r}
+flowerCorr <- iris %>% select(SepalLengthCm, SepalWidthCm, PetalLengthCm, PetalWidthCm)
+n <- cor(flowerCorr)
+corrplot(n)
+```
+
+From this correlation plot, you can see that much of bivariate analysis that I have already done is succintly summarized. There are several salient observations that we can make:
+1. There is a strong positive correlation between petal length and petal width
+2. There is a strong positive correlation between petal length and sepal length
+3. There is a moderate negative correlation between petal length and sepal width
+
+Interesting! Now, let's jump into some machine learning!
+
+# Machine Learning
+
+As a total newbie at machine learning, this was the most exciting part about analyzing this dataset. From various articles, it seems that we have to accomplish the following steps:
+
+1. Split the data into training and testing sets
+2. Fit the model based on the training set
+3. Use the fit to predict species in the testing set
+4. Evaluate the accuracy of the model
+
+## Split the data
+
+We can use the caret package to split the dataset into training and testing sets. We will assign 70% of the data into the training set, and 30% for testing.
+
+```{r}
+set.seed(1)
+index <- createDataPartition(iris$Species, p = 0.7, list = FALSE)
+iris <- iris %>% select(-Id)
+irisTrain <- iris[index,]
+irisTest <- iris[-index,]
+```
+
+## Modelling
+
+### Decision Tree Classifier
+
+Very much like a flowchart, the decision tree makes branches according to the values in the data. At each branch, there is a condition that must be satisfied. If that value is satifisfied, then it will move into another branch; otherwise it moves into a seperate branch. This process continues until the branches do not account for much variance.
+
+Since I was just experimenting, I did not optimize the model (nor did I do it for any other model) and tried to classify with consideration for all variables.
+
+```{r}
+irisTree <- train(Species ~ ., irisTrain, method = "rpart")
+decisionPredictions <- predict(irisTree, irisTest)
+```
+
+We can plot the decision tree to see the branches:
+
+```{r}
+plot(irisTree$finalModel)
+text(irisTree$finalModel)
+```
+
+Finally, let's evaluate the accuracy of the model using a confusion matrix:
+
+```{r}
+confusionMatrix(data = decisionPredictions, reference = irisTest$Species)
+```
+
+Not bad! An accuracy of 95.6% is certainly respectable. However, I would like to optimize this value later. But for now, let us move on to the next model.
+
+### Logistic Regression
+
+A logit regression is like a linear regression, but it instead models based on categorical variables, in contrast to the continuous variables of a linear regression. Let's fit the model, predict it, and analyze the accuracy:
+
+```{r}
+multinomialFit <- train(Species ~ ., irisTrain, method = "multinom")
+logitPrediction <- predict(multinomialFit, irisTest)
+confusionMatrix(data = logitPrediction, reference = irisTest$Species)
+```
+
+Interesting! We got the exact same accuracy as the decision tree classifier. Maybe, there is something wrong with my code. I would like to look into this further.
+
+### K-nearest neighbors
+
+The k-nearest neighbors algorithm uses the class of the majority data points around K points to classify it. Since you are using the classification of other data points, this method is supervised machine learning. Let's look at the code, shall we?
+
+```{r}
+knnFit <- train(Species ~ ., irisTrain, method = "knn")
+knnPrediction <- predict(knnFit, irisTest)
+confusionMatrix(data = knnPrediction, reference = irisTest$Species)
+```
+
+The accuracy of the KNN model is so far the highest one at 98%! I would like to know what caused this model to be more accurate than the others. Was this by chance or is due to the strength of the model? We should investigate this later.
+
+### Random forest
+
+This machine learning method is called an ensemble method, as it combines various learning algorithms. It also takes a random sample of the data and makes a model based on it, and continues to do so. At the end, the final model is a very accurate model for the whole dataset. However, since it creates multiple models, it is a slow process. Nevertheless, let us look into the code.
+
+```{r}
+rfFit <- train(Species ~ ., irisTrain, method = "rf")
+rfPrediction <- predict(rfFit, irisTest)
+confusionMatrix(data = rfPrediction, reference = irisTest$Species)
+```
+
+Interstingly, the accuracy fell back to 95.6%. I am kind of weirded out to the fact that the accuracy percentage of 95.6% has been repeated 3 times now. This is definitely something I will look into in the future.
+
+### Support vector machine
+
+A support vector machine is one of the most accurate models. It works on the premise that there is always a line or a plane that can seperate the datapoints based on its classes. The machine will try to find the best plane or line that can accomplish this task. Here is teh following code:
+
+```{r}
+svmFit <- train(Species~ ., irisTrain, method = "svmLinear")
+svmPrediction <- predict(svmFit, irisTest)
+confusionMatrix(data = svmPrediction, reference = irisTest$Species)
+```
+
+Nice! The accuracy is back at 98%. I am again a bit confused about why the percentage is the exact same as the KNN model. Something to look into for the future.
+
+With that, I have completed my first machine learning project! I definetly enjoyed constructing the different models and seeing the high rates of accuracy. Next time, I would like to look into the following:
+
+1. Is there a way to plot the AUROC curves of the model in R?
+2. Why did I get spitting copies of the accuracy percentage among different models?
+3. How can I optimize the model to increase its accuracy?
+
+In the mean time, I will continue to practice my machine learning skills! 
